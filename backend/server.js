@@ -10,6 +10,7 @@ const User = require("./models/User"); // required for auto-offline
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+mongoose.set("bufferCommands", false);
 
 // =======================
 // SOCKET.IO CONFIG
@@ -113,12 +114,21 @@ app.get("/", (req, res) => {
 // MONGODB
 // =======================
 mongoose
-  mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("MongoDB Connected");
+
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("MongoDB connection failed:", err);
+  });
+
 
 // =======================
 // SOCKET.IO HANDLERS (MERGED)
@@ -194,26 +204,23 @@ io.on("connection", (socket) => {
 
 
 
-// =======================
-// AUTO-OFFLINE SYSTEM
-// =======================
-setInterval(async () => {
-  const cutoff = new Date(Date.now() - 2 * 60 * 1000);
+mongoose.connection.once("connected", () => {
+  console.log("MongoDB connected — starting auto-offline system");
 
-  try {
-    await User.updateMany(
-      { lastSeen: { $lt: cutoff } },
-      { isOnline: false }
-    );
-  } catch (err) {
-    console.error("Auto offline error:", err);
-  }
-}, 60000);
+  setInterval(async () => {
+    const cutoff = new Date(Date.now() - 2 * 60 * 1000);
 
-// =======================
-// START SERVER
-// =======================
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+    try {
+      await User.updateMany(
+        { lastSeen: { $lt: cutoff } },
+        { isOnline: false }
+      );
+    } catch (err) {
+      console.error("Auto offline error:", err.message);
+    }
+  }, 60000);
 });
+
+
+
 
